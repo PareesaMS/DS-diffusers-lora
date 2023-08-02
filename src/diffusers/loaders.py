@@ -316,7 +316,6 @@ class UNet2DConditionLoadersMixin:
             for key, value in state_dict.items():
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
-
             for key, value_dict in lora_grouped_dict.items():
                 rank = value_dict["to_k_lora.down.weight"].shape[0]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]

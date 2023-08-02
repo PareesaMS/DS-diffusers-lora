@@ -211,6 +211,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         class_labels: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        scale = 1,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
@@ -294,6 +295,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
                 timestep=timestep,
+                scale=scale,
                 cross_attention_kwargs=cross_attention_kwargs,
                 class_labels=class_labels,
             )

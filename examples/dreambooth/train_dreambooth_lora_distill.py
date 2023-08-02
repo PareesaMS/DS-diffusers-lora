@@ -482,8 +482,9 @@ class DreamBoothDataset(Dataset):
 
     def __init__(
         self,
-        instance_data_root,
-        instance_prompt,
+        #instance_data_root,
+        instance_prompts,
+        instance_images,
         tokenizer,
         class_data_root=None,
         class_prompt=None,
@@ -501,27 +502,16 @@ class DreamBoothDataset(Dataset):
         self.instance_prompt_encoder_hidden_states = instance_prompt_encoder_hidden_states
         self.tokenizer_max_length = tokenizer_max_length
 
-        self.instance_data_root = Path(instance_data_root)
-        if not self.instance_data_root.exists():
-            raise ValueError("Instance images root doesn't exists.")
+        #self.instance_data_root = Path(instance_data_root)
+        #if not self.instance_data_root.exists():
+        #    raise ValueError("Instance images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
-        self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
+        #self.instance_images_path = list(Path(instance_data_root).iterdir())
+        #self.num_instance_images = len(self.instance_images_path)
+        self.num_instance_images = len(instance_prompts)
+        self.instance_prompts = instance_prompts
+        self.instance_images = instance_images
         self._length = self.num_instance_images
-
-        if class_data_root is not None:
-            self.class_data_root = Path(class_data_root)
-            self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = list(self.class_data_root.iterdir())
-            if class_num is not None:
-                self.num_class_images = min(len(self.class_images_path), class_num)
-            else:
-                self.num_class_images = len(self.class_images_path)
-            self._length = max(self.num_class_images, self.num_instance_images)
-            self.class_prompt = class_prompt
-        else:
-            self.class_data_root = None
 
         self.image_transforms = transforms.Compose(
             [
@@ -537,38 +527,47 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        #instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = self.instance_images[index % self.num_instance_images]
         instance_image = exif_transpose(instance_image)
+        uncond_tokens = [""] * args.train_batch_size
 
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
 
-        if self.encoder_hidden_states is not None:
-            example["instance_prompt_ids"] = self.encoder_hidden_states
-        else:
-            text_inputs = tokenize_prompt(
-                self.tokenizer, self.instance_prompt, tokenizer_max_length=self.tokenizer_max_length
-            )
-            example["instance_prompt_ids"] = text_inputs.input_ids
-            example["instance_attention_mask"] = text_inputs.attention_mask
+        # if self.encoder_hidden_states is not None:
+        #     example["instance_prompt_ids"] = self.encoder_hidden_states
+        # else:
+        text_inputs = tokenize_prompt(
+            self.tokenizer, self.instance_prompts[index % self.num_instance_images], tokenizer_max_length=self.tokenizer_max_length
+        )
+        example["instance_prompt_ids"] = text_inputs.input_ids
+        example["instance_attention_mask"] = text_inputs.attention_mask
 
-        if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
-            class_image = exif_transpose(class_image)
+        # Compute the unconditional prompt
+        uncond_inputs = tokenize_prompt(
+            self.tokenizer, uncond_tokens, tokenizer_max_length=self.tokenizer_max_length
+        )
+        example["uncond_prompt_ids"] = uncond_inputs.input_ids
+        example["uncond_attention_mask"] = uncond_inputs.attention_mask
+        
+        # if self.class_data_root:
+        #     class_image = Image.open(self.class_images_path[index % self.num_class_images])
+        #     class_image = exif_transpose(class_image)
 
-            if not class_image.mode == "RGB":
-                class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
+        #     if not class_image.mode == "RGB":
+        #         class_image = class_image.convert("RGB")
+        #     example["class_images"] = self.image_transforms(class_image)
 
-            if self.instance_prompt_encoder_hidden_states is not None:
-                example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
-            else:
-                class_text_inputs = tokenize_prompt(
-                    self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
-                )
-                example["class_prompt_ids"] = class_text_inputs.input_ids
-                example["class_attention_mask"] = class_text_inputs.attention_mask
+        #     if self.instance_prompt_encoder_hidden_states is not None:
+        #         example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
+        #     else:
+        #         class_text_inputs = tokenize_prompt(
+        #             self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
+        #         )
+        #         example["class_prompt_ids"] = class_text_inputs.input_ids
+        #         example["class_attention_mask"] = class_text_inputs.attention_mask
 
         return example
 
@@ -577,31 +576,39 @@ def collate_fn(examples, with_prior_preservation=False):
     has_attention_mask = "instance_attention_mask" in examples[0]
 
     input_ids = [example["instance_prompt_ids"] for example in examples]
+    uncond_ids = [example["uncond_prompt_ids"] for example in examples]
     pixel_values = [example["instance_images"] for example in examples]
 
     if has_attention_mask:
         attention_mask = [example["instance_attention_mask"] for example in examples]
-
+        uncond_attention_mask = [example["uncond_attention_mask"] for example in examples]
+        
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
         input_ids += [example["class_prompt_ids"] for example in examples]
+        uncond_ids += [example["uncond_prompt_ids"] for example in examples]
         pixel_values += [example["class_images"] for example in examples]
+
         if has_attention_mask:
             attention_mask += [example["class_attention_mask"] for example in examples]
+            uncond_attention_mask += [example["uncond_attention_mask"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     input_ids = torch.cat(input_ids, dim=0)
+    uncond_ids = torch.cat(uncond_ids, dim=0)
 
     batch = {
         "input_ids": input_ids,
+        "uncond_ids": uncond_ids,
         "pixel_values": pixel_values,
     }
 
     if has_attention_mask:
         batch["attention_mask"] = attention_mask
+        batch["uncond_attention_mask"] = uncond_attention_mask
 
     return batch
 
@@ -762,7 +769,7 @@ def main(args):
             del pipeline
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
+    #pdb.set_trace()
     # Handle the repository creation
     if accelerator.is_main_process:
         if args.output_dir is not None:
@@ -783,7 +790,7 @@ def main(args):
             revision=args.revision,
             use_fast=False,
         )
-
+    #pdb.set_trace()
     # import correct text encoder class
     text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
 
@@ -854,7 +861,7 @@ def main(args):
     # Set correct lora layers
     unet_lora_attn_procs = {}
     unet_lora_parameters = []
-    pdb.set_trace()
+    #pdb.set_trace()
     for name, attn_processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
@@ -877,7 +884,7 @@ def main(args):
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
 
-    pdb.set_trace()
+    #pdb.set_trace()
     unet.set_attn_processor(unet_lora_attn_procs)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
@@ -1008,20 +1015,38 @@ def main(args):
         validation_prompt_negative_prompt_embeds = None
         pre_computed_instance_prompt_encoder_hidden_states = None
 
+    from datasets import load_dataset
+    dataset_hf = load_dataset('poloclub/diffusiondb', '2m_first_10k')
+    raw_train_dataset = dataset_hf['train']
+
+
+        
     # Dataset and DataLoaders creation:
+    # train_dataset = DreamBoothDataset(
+    #     instance_data_root=args.instance_data_dir,
+    #     instance_prompt=args.instance_prompt,
+    #     class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+    #     class_prompt=args.class_prompt,
+    #     class_num=args.num_class_images,
+    #     tokenizer=tokenizer,
+    #     size=args.resolution,
+    #     center_crop=args.center_crop,
+    #     encoder_hidden_states=pre_computed_encoder_hidden_states,
+    #     instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+    #     tokenizer_max_length=args.tokenizer_max_length,
+    # )
+
+    #Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
-        class_num=args.num_class_images,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
-        encoder_hidden_states=pre_computed_encoder_hidden_states,
-        instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
-        tokenizer_max_length=args.tokenizer_max_length,
-    )
+                instance_prompts=raw_train_dataset['prompt'],
+                instance_images=raw_train_dataset['image'],
+                tokenizer=tokenizer,
+                size=args.resolution,
+                center_crop=args.center_crop,
+                encoder_hidden_states=pre_computed_encoder_hidden_states,
+                instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+                tokenizer_max_length=args.tokenizer_max_length,
+            )
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -1111,13 +1136,17 @@ def main(args):
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
-
+    #pdb.set_trace()
     for epoch in range(first_epoch, args.num_train_epochs):
+        print("epoch", epoch)
         unet.train()
         if args.train_text_encoder:
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
+            #print ("step", step)
+            #if step == 4:
+            #    break
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
                 if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
@@ -1147,15 +1176,23 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Get the text embedding for conditioning
+                #pdb.set_trace()
                 if args.pre_compute_text_embeddings:
                     encoder_hidden_states = batch["input_ids"]
                 else:
-                    encoder_hidden_states = encode_prompt(
-                        text_encoder,
-                        batch["input_ids"],
-                        batch["attention_mask"],
+                    encoder_hidden_states = encode_prompt(                                   
+                        text_encoder,                                                        
+                        batch["input_ids"],                                                  
+                        batch["attention_mask"],                                             
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
-                    )
+                    )                                                                        
+
+                encoder_hidden_states_uncond = encode_prompt(                                   
+                    text_encoder,                                                        
+                    batch["uncond_ids"],                                                  
+                    batch["uncond_attention_mask"],                                             
+                    text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,                    
+                )   
 
                 if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
                     noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
@@ -1165,11 +1202,17 @@ def main(args):
                 else:
                     class_labels = None
 
-                # Predict the noise residual
+                # Predict the student noise residual
+                #pdb.set_trace()
                 model_pred = unet(
-                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
+                    noisy_model_input, timesteps, encoder_hidden_states, scale = 1, class_labels=class_labels
                 ).sample
 
+                gc = 7.5
+                teacher_cond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states, scale = 0, class_labels=class_labels).sample
+                teacher_uncond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states_uncond, scale = 0, class_labels=class_labels).sample
+                teacher_noise_pred = teacher_uncond_noise + gc * (teacher_cond_noise - teacher_uncond_noise)
+                
                 # if model predicts variance, throw away the prediction. we will only train on the
                 # simplified training objective. This means that all schedulers using the fine tuned
                 # model must be configured to use one of the fixed variance variance types.
@@ -1184,22 +1227,23 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                if args.with_prior_preservation:
-                    # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
-                    model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
-                    target, target_prior = torch.chunk(target, 2, dim=0)
+                # if args.with_prior_preservation:
+                #     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
+                #     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+                #     target, target_prior = torch.chunk(target, 2, dim=0)
 
-                    # Compute instance loss
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                #     # Compute instance loss
+                #     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-                    # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                #     # Compute prior loss
+                #     prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
-                    # Add the prior loss to the instance loss.
-                    loss = loss + args.prior_loss_weight * prior_loss
-                else:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
+                #     # Add the prior loss to the instance loss.
+                #     loss = loss + args.prior_loss_weight * prior_loss
+                # else:
+                #     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                loss = F.mse_loss(model_pred.float(), teacher_noise_pred.float(), reduction="mean")
+                
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (

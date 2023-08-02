@@ -314,7 +314,7 @@ class Attention(nn.Module):
 
         self.processor = processor
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=0.0, **cross_attention_kwargs):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
@@ -323,6 +323,7 @@ class Attention(nn.Module):
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
+            scale=scale,
             **cross_attention_kwargs,
         )
 
@@ -449,6 +450,7 @@ class AttnProcessor:
         attn: Attention,
         hidden_states,
         encoder_hidden_states=None,
+        scale=0,
         attention_mask=None,
         temb=None,
     ):
@@ -563,7 +565,7 @@ class LoRAAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(
-        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
+        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=0.0, temb=None
     ):
         residual = hidden_states
 
@@ -860,7 +862,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=0.0):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -1186,7 +1188,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
     def __call__(
-        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
+        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=0.0, temb=None
     ):
         residual = hidden_states
 
@@ -1272,7 +1274,7 @@ class LoRAAttnProcessor2_0(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=0.0):
         residual = hidden_states
 
         input_ndim = hidden_states.ndim

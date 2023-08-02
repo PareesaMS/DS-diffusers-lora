@@ -134,6 +134,7 @@ class BasicTransformerBlock(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        scale = 1,
         timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
@@ -155,6 +156,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
+            scale=scale,
             **cross_attention_kwargs,
         )
         if self.use_ada_layer_norm_zero:
@@ -171,6 +173,7 @@ class BasicTransformerBlock(nn.Module):
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
+                scale = scale,
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states

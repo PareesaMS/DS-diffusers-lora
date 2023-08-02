@@ -606,6 +606,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        scale = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
@@ -616,6 +617,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
                 attention_mask=attention_mask,
+                scale=scale,
                 encoder_attention_mask=encoder_attention_mask,
                 return_dict=False,
             )[0]
@@ -716,6 +718,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        scale = 1,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
@@ -954,6 +957,7 @@ class CrossAttnDownBlock2D(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        scale = 1,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
@@ -996,6 +1000,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
+                    scale=scale,
                     return_dict=False,
                 )[0]
 
@@ -1620,6 +1625,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        scale = 1,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
@@ -1826,6 +1832,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        scale = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
@@ -2085,6 +2092,7 @@ class CrossAttnUpBlock2D(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        scale: float = 1,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -2126,6 +2134,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
+                    scale=scale,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -2774,6 +2783,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
+        scale = 1,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
@@ -3005,6 +3015,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        scale = 1,
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
@@ -3135,6 +3146,7 @@ class KAttentionBlock(nn.Module):
         #       requires assessing impact of change to positional param interface.
         emb: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        scale = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
