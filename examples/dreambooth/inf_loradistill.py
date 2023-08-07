@@ -6,9 +6,9 @@ import torch
 import pdb
 
 seed = 12345001
-new_model = "/home/pagolnar/clones/DS-diffusers-lora/examples/dreambooth/model-lora-distill/"
+new_model = "/home/pagolnar/clones/DS-diffusers-lora/examples/dreambooth/model-lora-distill-2/"
 old_model = "runwayml/stable-diffusion-v1-5"
-image_out_dir = "/home/pagolnar/clones/DS-diffusers-lora/examples/dreambooth/out1/"
+image_out_dir = "/home/pagolnar/clones/DS-diffusers-lora/examples/dreambooth/out2/"
 
 prompt = "A person holding a cat"
 
@@ -26,12 +26,13 @@ image_old_no_opt.save(image_out_dir+"OLD_NO_OPT_seed_"+str(seed)+"_"+prompt[0:10
 # #--- new image
 #pdb.set_trace()
 pipe.unet.load_attn_procs(new_model)
-generator = torch.Generator("cuda").manual_seed(seed)
-#pdb.set_trace()
+generator = torch.Generator("cuda").manual_seed(seed)                                  
 image_new = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, scale=0).images[0]
-image_new.save(image_out_dir+"NEW__seed_"+str(seed)+"_"+prompt[0:100]+".png")
+image_new.save(image_out_dir+"NEW_NoLora__seed_"+str(seed)+"_"+prompt[0:100]+".png")
 
-
+generator = torch.Generator("cuda").manual_seed(seed)                                  
+image_new = pipe(prompt, num_inference_steps=50, guidance_scale=7.5, scale=1).images[0]
+image_new.save(image_out_dir+"NEW_Lora__seed_"+str(seed)+"_"+prompt[0:100]+".png")   
 
     
 

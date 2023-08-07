@@ -807,7 +807,7 @@ def main(args):
         # IF does not have a VAE so let's just set it to None
         # We don't have to error out here
         vae = None
-
+    
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
@@ -1015,6 +1015,10 @@ def main(args):
         validation_prompt_negative_prompt_embeds = None
         pre_computed_instance_prompt_encoder_hidden_states = None
 
+    used_mem=[]                            
+    mem1= torch.cuda.max_memory_allocated()
+    used_mem.append(mem1)
+    
     from datasets import load_dataset
     dataset_hf = load_dataset('poloclub/diffusiondb', '2m_first_10k')
     raw_train_dataset = dataset_hf['train']
@@ -1056,6 +1060,9 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
+    mem2= torch.cuda.max_memory_allocated()
+    used_mem.append(mem2)
+    
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1082,6 +1089,9 @@ def main(args):
             unet, optimizer, train_dataloader, lr_scheduler
         )
 
+    mem3= torch.cuda.max_memory_allocated()
+    used_mem.append(mem3)                  
+        
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -1144,9 +1154,9 @@ def main(args):
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
-            #print ("step", step)
-            #if step == 4:
-            #    break
+            print ("step", step)
+            if step == 3:
+                break
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
                 if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
@@ -1176,7 +1186,6 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                #pdb.set_trace()
                 if args.pre_compute_text_embeddings:
                     encoder_hidden_states = batch["input_ids"]
                 else:
@@ -1209,9 +1218,10 @@ def main(args):
                 ).sample
 
                 gc = 7.5
-                teacher_cond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states, scale = 0, class_labels=class_labels).sample
-                teacher_uncond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states_uncond, scale = 0, class_labels=class_labels).sample
-                teacher_noise_pred = teacher_uncond_noise + gc * (teacher_cond_noise - teacher_uncond_noise)
+                with torch.no_grad():
+                    teacher_cond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states, scale = 0, class_labels=class_labels).sample
+                    teacher_uncond_noise = unet(noisy_model_input, timesteps, encoder_hidden_states_uncond, scale = 0, class_labels=class_labels).sample
+                    teacher_noise_pred = teacher_uncond_noise + gc * (teacher_cond_noise - teacher_uncond_noise)
                 
                 # if model predicts variance, throw away the prediction. we will only train on the
                 # simplified training objective. This means that all schedulers using the fine tuned
@@ -1252,10 +1262,22 @@ def main(args):
                         else unet_lora_parameters
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+
+                mem4= torch.cuda.max_memory_allocated()
+                mem42= torch.cuda.memory_allocated()
+                used_mem.append(mem4)
+                used_mem.append(mem42)
+                
+                    
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+                mem5= torch.cuda.max_memory_allocated()
+                used_mem.append(mem5)
+                mem52= torch.cuda.memory_allocated()
+                used_mem.append(mem52)                  
+                
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -1452,6 +1474,7 @@ def main(args):
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
+    np.savetxt('measuredMem.txt',used_mem,delimiter=',')
     accelerator.end_training()
 
 
